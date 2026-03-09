@@ -109,6 +109,7 @@ function App() {
   const emojiPickerRef = useRef(null);
   const attachmentMenuRef = useRef(null);
   const gifPickerRef = useRef(null);
+  const contextMenuRef = useRef(null);
   const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 768);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
@@ -332,7 +333,11 @@ function App() {
       if (gifPickerRef.current && !gifPickerRef.current.contains(event.target)) {
         setShowGifPicker(false);
       }
-      setContextMenu(null);
+      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
+        setContextMenu(null);
+      } else if (!contextMenuRef.current) {
+        setContextMenu(null);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
@@ -746,6 +751,7 @@ function App() {
           {/* Context Menu for Unsend */}
           {contextMenu && (
             <div 
+              ref={contextMenuRef}
               className="context-menu"
               style={{
                 position: 'absolute',
