@@ -116,7 +116,7 @@ function App() {
   const [gifSearchTerm, setGifSearchTerm] = useState('');
   const [targetLang, setTargetLang] = useState('en');
   const [isTranslating, setIsTranslating] = useState(false);
-  const [selectedMessageId, setSelectedMessageId] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
 
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -332,6 +332,7 @@ function App() {
       if (gifPickerRef.current && !gifPickerRef.current.contains(event.target)) {
         setShowGifPicker(false);
       }
+      setContextMenu(null);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
@@ -515,7 +516,7 @@ function App() {
 
   const handleDeleteMessage = async (messageId) => {
     // Optimistically UI hide the message options
-    setSelectedMessageId(null);
+    setContextMenu(null);
     try {
       const { error } = await supabase.from('messages').delete().eq('id', messageId);
       if (error) {
@@ -690,9 +691,14 @@ function App() {
                 <div 
                   key={message.id} 
                   className={`message-row ${messageClass}`}
-                  onClick={() => {
+                  onContextMenu={(e) => {
                     if (message.sender === 'me') {
-                      setSelectedMessageId(prev => prev === message.id ? null : message.id)
+                      e.preventDefault();
+                      setContextMenu({
+                        messageId: message.id,
+                        x: e.pageX,
+                        y: e.pageY
+                      });
                     }
                   }}
                 >
@@ -731,26 +737,32 @@ function App() {
                     )}
                     <span className={`message-time ${isMedia ? 'media-time' : ''}`}>{message.time}</span>
                   </div>
-                  {message.sender === 'me' && (
-                    <div 
-                      className={`message-actions ${selectedMessageId === message.id ? 'show-actions' : ''}`}
-                    >
-                      {selectedMessageId === message.id && (
-                        <div 
-                          className="delete-action" 
-                          onClick={() => handleDeleteMessage(message.id)}
-                          title="Unsend"
-                        >
-                          <Trash2 size={16} color="#ef4444" />
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Context Menu for Unsend */}
+          {contextMenu && (
+            <div 
+              className="context-menu"
+              style={{
+                position: 'absolute',
+                top: contextMenu.y,
+                left: contextMenu.x,
+                zIndex: 1000
+              }}
+            >
+              <div 
+                className="context-menu-item delete"
+                onClick={() => handleDeleteMessage(contextMenu.messageId)}
+              >
+                <Trash2 size={16} />
+                <span>Unsend Message</span>
+              </div>
+            </div>
+          )}
 
           {/* Chat Input */}
           <div className="chat-input-container" style={{ position: 'relative' }}>
