@@ -755,11 +755,10 @@ function App() {
               }}
             >
               <div 
-                className="context-menu-item delete"
+                className="context-menu-item"
                 onClick={() => handleDeleteMessage(contextMenu.messageId)}
               >
-                <Trash2 size={16} />
-                <span>Unsend Message</span>
+                <span>Unsend</span>
               </div>
             </div>
           )}
