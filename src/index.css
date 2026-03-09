@@ -834,5 +834,39 @@ body {
   font-size: 14px;
   margin-top: -8px;
   text-align: center;
-} 
- 
+}
+
+/* Delete Message Action Styles */
+.message-actions {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+  opacity: 0;
+  width: 0;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.message-actions.show-actions {
+  opacity: 1;
+  width: auto;
+  overflow: visible;
+}
+
+.delete-action {
+  background-color: #fee2e2;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 5px rgba(239, 68, 68, 0.2);
+}
+
+.delete-action:hover {
+  background-color: #fca5a5;
+  transform: scale(1.1);
+}

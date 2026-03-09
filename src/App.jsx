@@ -16,7 +16,8 @@ import {
   Image as ImageIcon,
   Music,
   FileText,
-  LogOut
+  LogOut,
+  Trash2
 } from 'lucide-react';
 import './index.css';
 import EmojiPicker from 'emoji-picker-react';
@@ -115,6 +116,7 @@ function App() {
   const [gifSearchTerm, setGifSearchTerm] = useState('');
   const [targetLang, setTargetLang] = useState('en');
   const [isTranslating, setIsTranslating] = useState(false);
+  const [selectedMessageId, setSelectedMessageId] = useState(null);
 
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -298,6 +300,13 @@ function App() {
             messages: [...chat.messages, formattedMsg]
           };
         }));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, payload => {
+        const deletedMsgId = payload.old.id;
+        setChats(prev => prev.map(chat => ({
+          ...chat,
+          messages: chat.messages.filter(m => m.id !== deletedMsgId)
+        })));
       })
       .subscribe();
 
@@ -504,6 +513,20 @@ function App() {
     setActiveChatId(null);
   };
 
+  const handleDeleteMessage = async (messageId) => {
+    // Optimistically UI hide the message options
+    setSelectedMessageId(null);
+    try {
+      const { error } = await supabase.from('messages').delete().eq('id', messageId);
+      if (error) {
+        console.error("Error deleting message:", error);
+        alert("Failed to delete message");
+      }
+    } catch (err) {
+      console.error("Unexpected error:", err);
+    }
+  };
+
   const handleLogout = async () => {
     if (currentUser) {
       await supabase.from('profiles').update({ is_online: false }).eq('id', currentUser.id);
@@ -664,7 +687,15 @@ function App() {
               const messageClass = message.sender === 'me' ? 'sent' : 'received';
               const isMedia = message.attachment?.type === 'image' || message.attachment?.type === 'video' || message.attachment?.type === 'gif';
               return (
-                <div key={message.id} className={`message-row ${messageClass}`}>
+                <div 
+                  key={message.id} 
+                  className={`message-row ${messageClass}`}
+                  onClick={() => {
+                    if (message.sender === 'me') {
+                      setSelectedMessageId(prev => prev === message.id ? null : message.id)
+                    }
+                  }}
+                >
                   <div className={`message-bubble ${messageClass} ${isMedia ? 'media-bubble' : ''}`}>
                     {message.attachment ? (
                       <div className="message-attachment">
@@ -700,6 +731,21 @@ function App() {
                     )}
                     <span className={`message-time ${isMedia ? 'media-time' : ''}`}>{message.time}</span>
                   </div>
+                  {message.sender === 'me' && (
+                    <div 
+                      className={`message-actions ${selectedMessageId === message.id ? 'show-actions' : ''}`}
+                    >
+                      {selectedMessageId === message.id && (
+                        <div 
+                          className="delete-action" 
+                          onClick={() => handleDeleteMessage(message.id)}
+                          title="Unsend"
+                        >
+                          <Trash2 size={16} color="#ef4444" />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
