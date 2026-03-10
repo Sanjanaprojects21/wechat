@@ -110,6 +110,9 @@ function App() {
   const attachmentMenuRef = useRef(null);
   const gifPickerRef = useRef(null);
   const contextMenuRef = useRef(null);
+  const typingChannelRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const activeChatIdRef = useRef(null);
   const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 768);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
@@ -260,6 +263,7 @@ function App() {
           time: lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
           unread: 0,
           online: profile.is_online,
+          isTyping: false,
           messages: profileMessages.map(m => ({
             id: m.id,
             text: m.text,
@@ -294,11 +298,14 @@ function App() {
             attachment: newMsg.attachment_url ? { type: newMsg.attachment_type, url: newMsg.attachment_url, name: newMsg.text || newMsg.attachment_type } : null
           };
 
+          const isUnread = newMsg.sender_id !== currentUser.id && chat.id !== activeChatIdRef.current;
+
           return {
             ...chat,
             lastMessage: formattedMsg.text || formattedMsg.attachment?.type,
             time: formattedMsg.time,
-            messages: [...chat.messages, formattedMsg]
+            messages: [...chat.messages, formattedMsg],
+            unread: isUnread ? (chat.unread || 0) + 1 : chat.unread
           };
         }));
       })
@@ -311,10 +318,25 @@ function App() {
       })
       .subscribe();
 
+    const typingChannel = supabase.channel('typing');
+    typingChannel.on('broadcast', { event: 'typing' }, payload => {
+      const { sender_id, receiver_id, is_typing } = payload.payload;
+      if (receiver_id === currentUser.id) {
+        setChats(prev => prev.map(c => c.id === sender_id ? { ...c, isTyping: is_typing } : c));
+      }
+    }).subscribe();
+
+    typingChannelRef.current = typingChannel;
+
     return () => {
       supabase.removeChannel(messageSubscription);
+      supabase.removeChannel(typingChannel);
     };
   }, [currentUser]);
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
 
   useEffect(() => {
     const handleResize = () => setIsMobileView(window.innerWidth <= 768);
@@ -360,9 +382,41 @@ function App() {
     chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleInputChange = (e) => {
+    setInputText(e.target.value);
+    if (!activeChatId || !typingChannelRef.current) return;
+
+    typingChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { sender_id: currentUser.id, receiver_id: activeChatId, is_typing: true }
+    }).catch(console.error);
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      if (typingChannelRef.current) {
+        typingChannelRef.current.send({
+          type: 'broadcast',
+          event: 'typing',
+          payload: { sender_id: currentUser.id, receiver_id: activeChatId, is_typing: false }
+        }).catch(console.error);
+      }
+    }, 2000);
+  };
+
   const handleSendMessage = async (e, sender = "me") => {
     e?.preventDefault();
     if (!inputText.trim() || !activeChatId || isTranslating) return;
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    if (typingChannelRef.current) {
+      typingChannelRef.current.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { sender_id: currentUser.id, receiver_id: activeChatId, is_typing: false }
+      }).catch(console.error);
+    }
 
     let textToSend = inputText;
 
@@ -650,9 +704,11 @@ function App() {
                   <span className="chat-item-time">{chat.time}</span>
                 </div>
                 <div className="message-preview-row">
-                  <span className="chat-item-message">{chat.lastMessage}</span>
+                  <span className="chat-item-message" style={chat.unread > 0 ? { color: '#07c160', fontWeight: '600' } : {}}>
+                    {chat.isTyping ? <span style={{ color: '#07c160', fontStyle: 'italic', fontWeight: 'normal' }}>typing...</span> : chat.lastMessage}
+                  </span>
                   {chat.unread > 0 && (
-                    <span className="unread-badge">{chat.unread}</span>
+                    <span className="unread-badge">{chat.unread} new</span>
                   )}
                 </div>
               </div>
@@ -673,7 +729,9 @@ function App() {
               <div className="chat-header-avatar">{activeChat.avatar}</div>
               <div className="chat-header-text">
                 <span className="chat-header-name">{activeChat.name}</span>
-                <span className="chat-header-status">{activeChat.online ? 'Online' : 'Offline'}</span>
+                <span className="chat-header-status">
+                  {activeChat.isTyping ? <span style={{ color: '#07c160', fontStyle: 'italic' }}>typing...</span> : (activeChat.online ? 'Online' : 'Offline')}
+                </span>
               </div>
             </div>
             <div className="header-icons">
@@ -745,6 +803,16 @@ function App() {
                 </div>
               );
             })}
+            
+            {activeChat.isTyping && (
+              <div className="message-row received">
+                <div className="message-bubble received typing-bubble">
+                  <div className="typing-indicator">
+                    <span></span><span></span><span></span>
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
@@ -925,7 +993,7 @@ function App() {
                 className="chat-input"
                 placeholder={isTranslating ? "Translating..." : "Type a message or /gif to search..."}
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleSendMessage(e, "me");
